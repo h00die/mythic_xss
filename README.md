@@ -1,7 +1,6 @@
-CVE REQUEST - field: "Clearly describe the vulnerability, its impact, and how it can be exploited. Include step-by-step reproduction instructions and, if possible, a proof of concept."
-(Product: Mythic, https://github.com/its-a-feature/Mythic)
+# CVE-2026-119764
 
-=== Vulnerability ===
+## Vulnerability
 
 Mythic (open-source command-and-control framework) v3.2.16 through v3.4.0.61 contains a stored Cross-Site Scripting vulnerability (CWE-79, aided by CWE-693 missing security headers) in the operator web UI that allows an attacker to take over a Mythic operator's account, including administrators, and thereby read all callback data, credentials, and tasking for every operation hosted on the instance. CVSS 3.1: 8.6 High - AV:N/AC:L/PR:N/UI:R/S:C/C:H/I:H/A:N.
 
@@ -9,17 +8,17 @@ Mythic stores every file an agent uploads (the output of operator-initiated `dow
 
 The operator UI then embeds that same URL in a same-origin nested browsing context: for files whose agent-reported name ends in .pdf, the "Preview Media" action renders <object data={"/direct/view/" + agent_file_id}> (MythicReactUI/src/components/pages/Callbacks/ResponseDisplayMedia.js:336; reachable from the callback File Browser table, the tasking output view, the file search page, download history, and the file context menu). Any HTML/JavaScript in the uploaded bytes therefore executes as the authenticated Mythic UI origin. The UI keeps the operator's long-lived JWT access_token and refresh_token in localStorage (MythicReactUI/src/cache.js:168-169), so the injected script simply reads both tokens and exfiltrates them. The stolen JWT grants full GraphQL + REST access as that operator: all callbacks across every operation, the credential store, tasking rights; an admin token additionally allows persistent access via apitoken/operator creation.
 
-=== Impact ===
+## Impact
 
 Complete compromise of the Mythic operator console and, through it, the entire C2 deployment: all implanted endpoints, collected credentials, and past/present tasking for every operation become readable and controllable by the attacker. The stolen session is a valid JWT, so the attacker needs no further interaction with the operator's browser.
 
 The attacker position required is minimal and realistic: control or visibility of ANY endpoint the operator will exfiltrate files from (a defender-run IR station that seized an implant host, a honeypot, a co-tenanted machine). The attacker never communicates with the Mythic server, never speaks the agent protocol, never needs a payload UUID or encryption key, and plants no software on the operator side. The only user interaction is one routine UI click the operator initiates themselves (Preview Media on a file they chose to download). This is the same vulnerability class as CVE-2022-39197 (Cobalt Strike <=4.7, exploited in the wild, CISA KEV): operator-trusted data rendered as HTML in the privileged C2 client.
 
-=== Affected versions ===
+## Affected versions
 
 Introduced in v3.2.16 (commit e80fe952 adds both the /direct/view route and the <object> embed in the same release). Verified present in v3.2.16-v3.2.20, all v3.3.0.x releases (v3.3.0.0 through v3.3.0.136), and all v3.4.0.x releases (v3.4.0.0 through v3.4.0.61, the final v3 release; no backport exists). Versions through v3.2.2 are not affected (no /direct/view route). Fixed in v4.0.0 (fix present from the first release candidate v4.0.0rc1): the route moved behind Authorization-header JWT authentication with a file-read token scope, so the cookie-authenticated embed request can no longer retrieve file content. Recommended fix for any v3 deployment: pin Content-Type (e.g. application/octet-stream + Content-Disposition: attachment) or an isolated preview origin, add nosniff/CSP globally, and scope file-serving routes to the caller's operation.
 
-=== Step-by-step reproduction ===
+## Step-by-step reproduction
 
 Lab setup (vulnerable version):
 
@@ -51,6 +50,6 @@ Server-side confirmation without a browser (single curl, shows the mis-served co
 
 Operator-side browser automation of steps 6-7 (headless Chromium via Playwright) is included as poc/operator_browser_poc.py; the full chain was verified end-to-end against a stock v3.4.0.61 stack with an unmodified medusa agent.
 
-=== Proof of concept ===
+## Proof of concept
 
 Self-contained Python PoC kit (python3 + requests, no Mythic source or agent code needed): hostile_endpoint_xss.py plants the polyglot document, runs the exfil listener, and performs authenticated post-exploitation with the stolen tokens. A second exploit, mythic_direct_view_xss.py, demonstrates an alternate delivery vector where a hostile implant speaks the agent protocol itself (payload UUID + key are embedded in every deployed implant binary). The PoC repository will be published at https://github.com/h00die/mythic_3.4_xss after the CVE is assigned (available to the CNA on request). All testing was performed against the reporter's own lab instances.
