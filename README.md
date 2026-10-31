@@ -23,17 +23,17 @@ Introduced in v3.2.16 (commit e80fe952 adds both the /direct/view route and the 
 Lab setup (vulnerable version):
 
 1. git clone https://github.com/its-a-feature/Mythic && cd Mythic && git checkout v3.4.0.61
-2. Install and start the stack (Kali example): sudo ./install_docker_kali.sh && sudo ./mythic-cli start (or build mythic-cli from Mythic_CLI with cargo and use ./mythic-cli start). The UI is served at https://127.0.0.1:7443; log in with the admin credentials printed by ./mythic-cli or found in the generated .env.
-3. Install an agent and C2 profile: ./mythic-cli install github https://github.com/MythicC2Profiles/http -f && ./mythic-cli install github https://github.com/MythicAgents/medusa -f
+2. Install and start the stack (Kali example): `sudo ./install_docker_kali.sh && sudo ./mythic-cli start` (or build mythic-cli from Mythic_CLI with cargo and use `./mythic-cli` start). The UI is served at https://127.0.0.1:7443; log in with the admin credentials printed by `./mythic-cli` or found in the generated .env.
+3. Install an agent and C2 profile: `./mythic-cli install github https://github.com/MythicC2Profiles/http -f && ./mythic-cli install github https://github.com/MythicAgents/medusa -f`
 4. In the UI (Create Payload): build a medusa payload with the http profile, encryption aes256_hmac or none; deploy/execute it on a host you control (this plays the "attacker-controlled endpoint the operator has a callback on") and confirm the callback appears in the UI.
 
 Attack:
 
 5. On the endpoint that has the callback (attacker side), run the PoC kit (python3 + requests):
-   ./hostile_endpoint_xss.py --plant /srv/HR_Shared --listen 0.0.0.0:8443
+   `./hostile_endpoint_xss.py --plant /srv/HR_Shared --listen 0.0.0.0:8443`
    This writes /srv/HR_Shared/salaries_2026.pdf, a file whose NAME ends in .pdf but whose BYTES are an HTML document containing a script that reads localStorage access_token/refresh_token and POSTs them to the listener (and starts an automatic post-exploitation module as soon as the tokens arrive).
 6. Operator side (normal behavior): in the callback's interactive console, task `download /srv/HR_Shared/salaries_2026.pdf`. The genuine, unmodified agent uploads the file into Mythic; the server stores it extension-less and lists it in the file browser.
-7. Operator side: open the callback's File Browser tab, expand the folder, click the Preview Media icon on the salaries_2026.pdf row. The UI renders <object data="/direct/view/<id>">; the server sniffs the bytes as text/html and serves them inline same-origin; the script runs in the operator UI origin and exfiltrates the tokens.
+7. Operator side: open the callback's File Browser tab, expand the folder, click the Preview Media icon on the salaries_2026.pdf row. The UI renders `<object data="/direct/view/<id>">;` the server sniffs the bytes as text/html and serves them inline same-origin; the script runs in the operator UI origin and exfiltrates the tokens.
 8. Attacker side observes: the listener prints the captured tokens and then authenticates to Mythic AS the operator (identity, operation membership, all callbacks, credential store), e.g.:
    [+] planted /srv/HR_Shared/salaries_2026.pdf (1386 bytes)
    [+] operator browser called back: /loot
@@ -43,7 +43,7 @@ Attack:
 
 Server-side confirmation without a browser (single curl, shows the mis-served content type):
 
-  curl -sk -i -H "Cookie: mythic=<operator jwt>" https://127.0.0.1:7443/direct/view/<agent_file_id>
+  `curl -sk -i -H "Cookie: mythic=<operator jwt>" https://127.0.0.1:7443/direct/view/<agent_file_id>`
   -> HTTP/1.1 200 OK
   -> Content-Type: text/html; charset=utf-8      (should be application/octet-stream + attachment)
   -> <the HTML/JS payload bytes, no CSP, no X-Content-Type-Options anywhere>
